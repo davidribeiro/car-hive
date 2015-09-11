@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">CarHive</string>
+    <string name="title_activity_maps">CarHive</string>
+    <string name="debugString">debug</string>
+    <string name="carHiveString">CarHive</string>
+    <string name="title_activity_splash">SplashActivity</string>
+
+    <string name="hello_world">Hello world!</string>
+    <string name="action_settings">Settings</string>
+</resources>
