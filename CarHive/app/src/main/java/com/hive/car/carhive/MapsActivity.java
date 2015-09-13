@@ -1,13 +1,21 @@
 package com.hive.car.carhive;
 
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.IntentSender;
 import android.graphics.Color;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
@@ -23,8 +31,11 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
@@ -32,9 +43,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
+import static com.android.volley.Request.Method.GET;
 import static com.android.volley.Response.ErrorListener;
 
 
@@ -47,16 +61,26 @@ public class MapsActivity extends FragmentActivity implements
     double currentLatitude = 0;
     double currentLongitude = 0;
     RequestQueue requestQueue;
-    TextView view;
+    TextView debugView;
     List<Polyline> polylines;
     private LatLng lastPosition;
+    private Button searchButton, carButton, parkButton;
+    private EditText searchText;
+    private float zoomLevel = (float) 17.5;
+    private LatLng markerPoint;
+    private Marker myCarMarker;
+
 
     private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
 
-    private GoogleMap mMap; // Might be null if Google Play services APK is not available.
+    private GoogleMap mMap;
 
     private GoogleApiClient mGoogleApiClient;
     private LocationRequest mLocationRequest;
+    private Geocoder geocoder;
+    private ArrayList<Marker> markers;
+    private String nameLogin;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,8 +88,14 @@ public class MapsActivity extends FragmentActivity implements
         setContentView(R.layout.activity_maps);
         setUpMapIfNeeded();
 
+        Bundle extras = getIntent().getExtras();
+        if (extras != null) {
+            nameLogin = extras.getString("new_variable_name");
+        }
         requestQueue = Volley.newRequestQueue(this);
         polylines = new ArrayList<>();
+        markers = new ArrayList<>();
+        myCarMarker = mMap.addMarker(new MarkerOptions().position(new LatLng(0,0)));
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .addConnectionCallbacks(this)
                 .addOnConnectionFailedListener(this)
@@ -84,13 +114,129 @@ public class MapsActivity extends FragmentActivity implements
         mMap.getUiSettings().setCompassEnabled(false);
         mMap.getUiSettings().setZoomControlsEnabled(false);
         mMap.getUiSettings().setZoomGesturesEnabled(false);
+        mMap.getUiSettings().setMapToolbarEnabled(false);
+
+        // MARKERS
+        mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+            @Override
+            public void onMapClick(LatLng point) {
+                markerPoint = point;
+                //sendMarker(point);
+                //debugView.setText(point.toString());
+            }
+        });
+
+        //SEARCH BUTTON
+        searchButton = (Button) findViewById(R.id.searchButton);
+        searchButtonListener();
+        carButton = (Button) findViewById(R.id.myCarButton);
+        parkButton = (Button) findViewById(R.id.reportSpots);
+        carButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (markerPoint==null) {
+                    return;
+                }
+                sendMarker(markerPoint, 0);
+            }
+        });
+        parkButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                final AlertDialog.Builder alert = new AlertDialog.Builder(MapsActivity.this);
+                final EditText input = new EditText(MapsActivity.this);
+                alert.setView(input);
+                alert.setTitle("Insira número de lugares vazios:");
+                alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        int x = Integer.parseInt(input.getText().toString().trim());
+                        sendMarker(markerPoint, x);
+                    }});
+                alert.show();
+            }
+        });
+
+        // GET Requests
         doStuff();
 
     }
+    // MAKE POST REQUEST
+    private void sendMarker(final LatLng point, final int dudeWheresMycar) {
+        //http://178.62.91.40:8080/lat=41.17517550113526&lng=-8.586116256192327&flag=0&user=Tunes
+        String url = "http://178.62.91.40:8080/lat=";
+        url = url.concat(String.valueOf(point.latitude));
+        url = url.concat("&lng=");
+        url = url.concat(String.valueOf(point.longitude));
+        url = url.concat("&flag=");
+        url = url.concat(String.valueOf(dudeWheresMycar));
+        url = url.concat("&user=");
+        url = url.concat(nameLogin);
+        JsonObjectRequest requestMarker = new JsonObjectRequest(Request.Method.GET, url,
+                new Response.Listener<JSONObject>() {
+                    @Override
+                    public void onResponse(JSONObject response) {
+                        if(dudeWheresMycar==0){
+                            myCarMarker.remove();
+                            myCarMarker = mMap.addMarker(new MarkerOptions().position(point).title("O seu carro")
+                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                        }
+                        else {
+                            mMap.addMarker(new MarkerOptions().position(point).title("Reportou " + dudeWheresMycar + " lugares")
+                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
+
+                        }
+                        Toast.makeText(getApplicationContext(), "Marcador adicionado", Toast.LENGTH_SHORT).show();
+                    }
+                }, new ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+
+            }
+        });
+        requestQueue.add(requestMarker);
+
+    }
+
+
+
+    private void searchButtonListener() {
+        searchButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                searchText = (EditText) findViewById(R.id.searchText);
+                String location = searchText.getText().toString();
+                geocoder = new Geocoder(getApplicationContext(), Locale.getDefault());
+                List<Address> addresses;
+                try {
+                    addresses = geocoder.getFromLocationName(location, 1);
+
+                    if (addresses.size() > 0) {
+                        Address address = addresses.get(0);
+                        //debugView.setText(address.getLatitude() + " " + address.getLongitude());
+                        LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
+                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, zoomLevel));
+                        lastPosition = latLng;
+                    } else {
+                        String searchError = "Morada não encontrada";
+                        Toast.makeText(getApplicationContext(), searchError, Toast.LENGTH_SHORT).show();
+                    }
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    debugView.setText("Erro");
+                }
+
+
+            }
+        });
+    }
+
 
     private void doStuff() {
         continueToDoStuff();
     }
+
 
     private void continueToDoStuff() {
         new CountDownTimer(1000*60*30, 100) {
@@ -102,51 +248,51 @@ public class MapsActivity extends FragmentActivity implements
                 final LatLng center = mMap.getCameraPosition().target;
                 if(!bounds.contains(lastPosition)){
                     lastPosition = center;
-                    view = (TextView) findViewById(R.id.textView);
+                    debugView = (TextView) findViewById(R.id.textView);
                     //  GOTTA CHANGE THE URL TO OUR SERVER
                     //String url = "http://178.62.91.40:8080/lat=";
                     String url = "http://api.geonames.org/findNearbyStreetsOSMJSON?lat=";
                     url = url.concat(String.valueOf(center.latitude));
                     url = url.concat("&lng=");
                     url = url.concat(String.valueOf(center.longitude));
-                    url = url.concat("&maxRows=20&username=dabydjones");
+                    url = url.concat("&maxRows=20&username=carHive");
+
+                    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(GET, url,
+                            new Response.Listener<JSONObject>() {
+                                @Override
+                                public void onResponse(JSONObject response) {
+                                    //view.setText(response.toString());
+                                    JSONArray array;
+                                    try {
+
+                                        for (Polyline line : polylines) {
+                                            line.remove();
+                                        }
+
+                                        polylines.clear();
+
+                                        array = response.getJSONArray("streetSegment");
+                                        debugView.setText("");
+                                        for (int i = 0; i < array.length(); i++) {
+                                            JSONObject object = array.getJSONObject(i);
+                                            String line = (String) object.get("line");
+                                            drawLine(line);
+                                        }
 
 
-                    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.GET, url,
-                        new Response.Listener<JSONObject>() {
-                            @Override
-                            public void onResponse(JSONObject response) {
-                                //view.setText(response.toString());
-                                JSONArray array;
-                                try {
-
-                                    for (Polyline line : polylines) {
-                                        line.remove();
+                                    } catch (JSONException e) {
+                                        e.printStackTrace();
                                     }
-
-                                    polylines.clear();
-
-                                    array = response.getJSONArray("streetSegment");
-                                    view.setText("");
-                                    for (int i = 0; i < array.length(); i++) {
-                                        JSONObject object = array.getJSONObject(i);
-                                        String line = (String) object.get("line");
-                                        drawLine(line);
-                                    }
-
-
-                                } catch (JSONException e) {
-                                    e.printStackTrace();
                                 }
-                            }
 
-                        }, new ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        view.setText("Something went wrong!");
-                    }
-                });
-                requestQueue.add(jsonObjectRequest);
+                            }, new ErrorListener() {
+                        @Override
+                        public void onErrorResponse(VolleyError error) {
+                            debugView.setText("Something went wrong!");
+                        }
+                    });
+                    requestQueue.add(jsonObjectRequest);
+                    getMarkers();
                 }
 
             }
@@ -159,6 +305,45 @@ public class MapsActivity extends FragmentActivity implements
         }.start();
     }
 
+    private void getMarkers() {
+        String url = "http://178.62.91.40:8080/lat=";
+        url = url.concat(String.valueOf(lastPosition.latitude));
+        url = url.concat("&lng=");
+        url = url.concat(String.valueOf(lastPosition.longitude));
+        url = url.concat("&markers");
+
+        JsonObjectRequest request = new JsonObjectRequest(GET, url, new Response.Listener<JSONObject>() {
+            @Override
+            public void onResponse(JSONObject response) {
+                for(int i=0; i<markers.size(); i++){
+                    markers.get(i).remove();
+                }
+                markers = new ArrayList<>();
+                    try {
+                    JSONArray array = response.getJSONArray("markers");
+                    for(int i=0; i<array.length(); i++) {
+                        if (array.getJSONObject(i).isNull("nSpots")) {
+                            String string = (String) array.getJSONObject(i).get("coords");
+                            string = string.replace(" ", "_");
+                            String[] pos = string.split("_");
+                            LatLng latLng = new LatLng(Double.parseDouble(pos[1]),Double.parseDouble(pos[0]));
+                            MarkerOptions marker = new MarkerOptions().position(latLng).title("nulo");
+                            Marker thisMarker = mMap.addMarker(marker);
+                            markers.add(thisMarker);
+                        }
+                    }
+                } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+            }
+        }, new ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                debugView.setText("Marker error");
+            }
+        });
+        requestQueue.add(request);
+    }
 
     @Override
     protected void onResume() {
@@ -177,21 +362,6 @@ public class MapsActivity extends FragmentActivity implements
         }
     }
 
-    /**
-     * Sets up the map if it is possible to do so (i.e., the Google Play services APK is correctly
-     * installed) and the map has not already been instantiated.. This will ensure that we only ever
-     * call {@link #setUpMap()} once when {@link #mMap} is not null.
-     * <p/>
-     * If it isn't installed {@link SupportMapFragment} (and
-     * {@link com.google.android.gms.maps.MapView MapView}) will show a prompt for the user to
-     * install/update the Google Play services APK on their device.
-     * <p/>
-     * A user can return to this FragmentActivity after following the prompt and correctly
-     * installing/updating/enabling the Google Play services. Since the FragmentActivity may not
-     * have been completely destroyed during this process (it is likely that it would only be
-     * stopped or paused), {@link #onCreate(Bundle)} may not be called again so we should call this
-     * method in {@link #onResume()} to guarantee that it will be called.
-     */
     private void setUpMapIfNeeded() {
         // Do a null check to confirm that we have not already instantiated the map.
         if (mMap == null) {
@@ -211,6 +381,7 @@ public class MapsActivity extends FragmentActivity implements
     private void setUpMap() {
         //mMap.addMarker(new MarkerOptions().position(new LatLng(0, 0)).title("Marker"));
     }
+
 
     private void handleNewLocation(Location location) {
         Log.d(TAG, location.toString());
@@ -233,7 +404,6 @@ public class MapsActivity extends FragmentActivity implements
 
         // PUT ZOOM AT MY LOCATION
 
-        float zoomLevel = (float) 17.5; //This goes up to 21
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, zoomLevel));
 
 
@@ -246,7 +416,7 @@ public class MapsActivity extends FragmentActivity implements
      * USED TO MAKE A REQUEST TO THE SERVER
      * RIGHT NOW ONLY ACESSING GEONAMES
      */
-    private void makeJSONObjectRequest() {
+/*    private void makeJSONObjectRequest() {
         final LatLng center = mMap.getCameraPosition().target;
         String url = "http://api.geonames.org/findNearbyStreetsOSMJSON?lat=";
         url = url.concat(String.valueOf(center.latitude));
@@ -255,14 +425,14 @@ public class MapsActivity extends FragmentActivity implements
         url = url.concat("&username=dabydjones");
         //url = "http://178.62.91.40:8080/";
 
-        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.GET,url,
+        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(GET,url,
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(JSONObject response) {
                         JSONParser parser = new JSONParser(response);
                         JSONArray array = parser.getArray();
                         String[] lines = new String[array.length()];
-        //                view.setText(center.toString());
+        //                debugView.setText(center.toString());
                         for(int i=0; i<array.length(); i++)
                             try {
                                 JSONObject aux = array.getJSONObject(i);
@@ -279,11 +449,11 @@ public class MapsActivity extends FragmentActivity implements
                 }, new ErrorListener() {
                     @Override
                     public void onErrorResponse(VolleyError error) {
-                        view.setText("Oops, something went wrong.");
+                        debugView.setText("Oops, something went wrong.");
                     }
                 });
         requestQueue.add(jsonObjectRequest);
-    }
+    }*/
 
     private void drawLine(String line) {
         ArrayList<LatLng> points = new ArrayList<>();

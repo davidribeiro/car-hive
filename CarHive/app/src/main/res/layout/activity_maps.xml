@@ -3,7 +3,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MapActivity"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:backgroundTint="#343838"
+    android:background="@color/grey">
 
     <TextView
         android:layout_width="wrap_content"
@@ -11,20 +13,83 @@
         android:textAppearance="?android:attr/textAppearanceMedium"
         android:text="@string/carHiveString"
         android:id="@+id/textView2"
-        android:layout_gravity="center_horizontal" />
+        android:layout_gravity="center_horizontal"
+        android:textColor="#00b4cc"
+        android:layout_marginTop="2.5dp"
+        android:layout_marginBottom="2.5dp" />
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:background="@color/mediumBlue">
+
+        <EditText
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/searchText"
+            android:layout_weight="1"
+            android:textColor="#00b4cc"
+            android:layout_marginLeft="10dp" />
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Procurar"
+            android:id="@+id/searchButton"
+            android:backgroundTint="#00B4CC"
+            android:contextClickable="false"
+            android:textColorHint="#343838"
+            android:layout_marginRight="10dp" />
+    </LinearLayout>
 
     <fragment xmlns:android="http://schemas.android.com/apk/res/android"
         xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
-        android:layout_height="434dp"
+        android:layout_height="375dp"
         android:id="@+id/map"
         tools:context=".MapsActivity"
         android:name="com.google.android.gms.maps.SupportMapFragment"
-        tools:layout="@layout/abc_search_dropdown_item_icons_2line" />
+        tools:layout="@layout/abc_search_dropdown_item_icons_2line"
+        android:layout_margin="10dp" />
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:id="@+id/layoutButtons"
+        android:background="@color/mediumBlue">
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="O meu carro"
+            android:id="@+id/myCarButton"
+            android:backgroundTint="#343838"
+            android:textColorHint="#00B4CC"
+            android:textColor="#00B4CC"
+            android:textColorLink="#00B4CC"
+            android:textColorHighlight="#00B4CC"
+            android:layout_gravity="center"
+            android:layout_marginLeft="30dp" />
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Reportar lugares vazios"
+            android:id="@+id/reportSpots"
+            android:backgroundTint="#343838"
+            android:textColorHint="#00B4CC"
+            android:textColor="#00B4CC"
+            android:layout_gravity="center" />
+
+    </LinearLayout>
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="70dp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:textAppearance="?android:attr/textAppearanceMedium"
         android:text="@string/debugString"
         android:id="@+id/textView"
