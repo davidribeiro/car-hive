@@ -29,19 +29,9 @@ function setTimeMarker () {
 	return UTC_Date_Marker;
 }
 
-function getCurrentTime(){
-	var currentTime = new Date();
-	var UTC_current_time = Date.UTC(currentTime.getFullYear(),
-									currentTime.getMonth(),
-									currentTime.getDay(),
-									currentTime.getHours(),
-									currentTime.getMinutes()); 
-	return UTC_current_time;
-}
-
-function checkTimeStamp(){
-	var Old_TimeStamp =  setTimeMarker();
-	var new_TimeStamp = getCurrentTime();
+function checkTimeStamp(oldTime){
+	var Old_TimeStamp =  oldTime;
+	var new_TimeStamp = setTimeMarker();
 	var flag;
 	if ((new_TimeStamp-Old_TimeStamp)>600000){ // 600 000 = 10min
 		flag=1;
@@ -55,6 +45,32 @@ function checkTimeStamp(){
 //
 //////
 
+
+
+countStreetMarkers = function(street, db){
+	findStreet(street, db, function(streetArray){
+		var cursor = db.collection('hiveMarkers');
+		var countSpots = 0;
+
+		if(streetArray.length > 0){
+			cursor.count({IDmarker:streetArray[0].IDmarker}, function(err, count){
+			cursor.find({IDmarker:streetArray[0].IDmarker}).toArray(function(err, res){
+				for(var c = 0; c < count; c++){
+					var checkTime = checkTimeStamp(res[c].date);
+
+					if(checkTime == 0){
+						countSpots += res[c].nSpots;
+					}
+				}
+				return countSpots;
+			});
+			});
+		}else
+		{
+			console.log('Erro ao procurar por street');
+		}
+	});
+}
 
 //[WAI]
 var createNewUser = function(user, coords, db){
@@ -161,15 +177,121 @@ var findStreet = function(street, db, resp){
 				respArray.push(res[c]);
 			}
 
-			if(respArray.length > 0)
-				console.log("Rua = " + res[0].name);
-
 			resp(respArray);
 		}); 
 	});
 }
 
-//Adicionar maxrows 
+function findStreetByIDMarker(marker, db){
+	var cursor = db.collection('hiveStreets');
+
+	cursor.find({IDmarker:marker}).toArray(function(err, res){
+		return res;
+	}); 
+}
+
+getMarkersWithID = function(db, id, callback){
+	var cursor = db.collection('hiveMarkers');
+
+	cursor.count({IDuser:id}, function(err, count){
+		if(count == 0)
+			return [];
+
+		cursor.find({IDuser:id}).toArray(function(err, res){
+			var Arr = [];
+
+			for(var c = 0; c < count; c++){
+				Arr.push(res[c].IDmarker);
+			}
+
+			callback(Arr);
+		}); 
+	});
+}
+
+
+function findFriends(user, db, resp){
+	var respArray = [];
+	var cursor = db.collection('hiveUsers');
+
+	cursor.findOne({name:user}, function(err, friendID){
+
+		var cursor = db.collection('hiveFriends');
+
+		cursor.count({user:friendID.name}, function(err, count){
+			cursor.find({user:friendID.name}).toArray(function(err, res){
+				for(var c = 0; c < count; c++){
+					respArray.push(res[c]);
+				}
+
+				resp(respArray);
+			});
+		});
+	});
+}
+
+//Friends
+app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*&user=[A-Za-z0-9]*&friends/, function(request, response){
+	console.log('New friends request ' + request.ip);
+
+	var user = request.originalUrl.toString().match(/&user=[A-Za-z0-9]*/).toString().substring(6);
+	var jsonData = [];
+
+	connectDB(function(db){
+		findFriends(user, db, function(friends){
+			var jsonData = [];
+			
+			for(var c = 0; c < friends.length; c++){
+				var cursor = db.collection('hiveUsers');
+
+				cursor.find({name:friends[c].friend}).toArray(function(err, res){
+					response.setHeader('Content-Type', 'application/json');
+					response.send(JSON.stringify({"markers": {coords:res[0].carcoord,nSpots:1}}));
+				});
+			}
+		});
+	});
+
+});
+
+//Get markers
+app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*&markers/, function (request, response){
+	console.log('New get markers request from ' + request.ip);
+
+	var coordStreet = request.originalUrl.toString().match(/lat=-?\d*.\d*/).toString().substring(4)+","+request.originalUrl.toString().match(/lng=-?\d*.\d*/).toString().substring(4);
+
+	requestGeoNames(request.originalUrl ,function(json){
+
+		var streets = JSON.parse(json).streetSegment;
+		
+			connectDB(function(db){	
+				var jsonData = [];
+
+				var streetArray = [];
+
+				for(var s = 0; s < streets.length; s++){
+
+					var spotsCount = Number(countStreetMarkers(streets[s].name, db));
+
+					console.log('street ' + s + " - "+ streets[s].name + " nspots = " + spotsCount);
+
+					jsonData.push({coords:streets[s].line.toString().split(',')[0],nSpots:spotsCount});
+				}
+
+				//Harcoded coords carro
+				var cursor = db.collection('hiveUsers');
+				
+
+				console.log(jsonData);
+				response.setHeader('Content-Type', 'application/json');
+				response.send(JSON.stringify({"markers": jsonData}));
+
+			});
+
+	});
+});
+
+//Linhas
 //[WAI]
 app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*&maxRows=\d*/, function (request, response){
 	console.log('New map request from ' + request.ip);
@@ -181,21 +303,27 @@ app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*&maxRows=\d*/, function (request, response){
 	});
 });
 
-//Get markers
-app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*/, function (request, response){
-	console.log('New get markers request from ' + request.ip);
+//Dados marker carro
+app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*&user=[A-Za-z0-9]*/, function(request, response){
 
-	requestGeoNames(request.originalUrl ,function(json){
-		console.log('json received');
-		response.setHeader('Content-Type', 'application/json');
-	    response.send(JSON.parse(json));
+	var user = request.originalUrl.toString().match(/&user=[A-Za-z0-9]*/).toString().substring(6);
+
+	connectDB(function(db){
+		findUser(user, db, function(userArray){
+			var jsonData = [];
+
+			jsonData.push({carcoords:userArray[0].carcoord});
+			
+			response.setHeader('Content-Type', 'application/json');
+			response.send(JSON.stringify({"car":jsonData}));
+		});
 	});
 });
 
 //Post marker
-app.post(/lat=-?\d*.\d*&lng=-?\d*.\d*&flag=\d*/, function (request, response){
+app.get(/lat=-?\d*.\d*&lng=-?\d*.\d*&flag=\d*&user=[A-Za-z0-9]*/, function (request, response){
 	console.log('New post markers from ' + request.ip);
-	var user = "testadmin";
+	var user = request.originalUrl.toString().match(/&user=[A-Za-z0-9]*/).toString().substring(6);
 	var flag = request.originalUrl.toString().match(/&flag=\d*/).toString().substring(6);
 	var coords = request.originalUrl.toString().match(/lat=-?\d*.\d*/).toString().substring(4)+","+request.originalUrl.toString().match(/lng=-?\d*.\d*/).toString().substring(4);
 
@@ -264,6 +392,8 @@ app.post(/lat=-?\d*.\d*&lng=-?\d*.\d*&flag=\d*/, function (request, response){
 	}else{
 		response.send('get não reconhecido');
 	}
+
+	response.send('Done');
 });
 
 var server = app.listen(8080, function () {
